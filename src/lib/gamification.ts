@@ -357,7 +357,7 @@ class GamificationService {
     return newBadges;
   }
 
-  private updateAchievements(progress: UserProgress): void {
+  private updateAchievements(progress:UserProgress): void {
     // Update scan master achievement
     const scanMaster = progress.achievements.find(a => a.id === 'scan_master');
     if (scanMaster && !scanMaster.completed) {

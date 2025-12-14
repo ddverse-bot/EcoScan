@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Scan, Leaf, Award, TrendingUp, Camera, Zap } from "lucide-react";
+import { Leaf, Award, TrendingUp, Camera, Zap } from "lucide-react";
 
 export default function HomePage() {
   const [ecoPoints, setEcoPoints] = useState(0);
@@ -45,7 +45,7 @@ export default function HomePage() {
       setCurrentTip((prev) => (prev + 1) % ecoTips.length);
     }, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [ecoTips.length]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 relative overflow-hidden">
