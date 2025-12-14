@@ -312,13 +312,16 @@ class ObjectDetectionService {
 
   dispose(): void {
     if (this.mobilenetModel) {
-      this.mobilenetModel.dispose();
-    }
+      // MobileNet does not expose dispose()
+      // Clearing reference allows GC to clean up tensors
+      this.mobilenetModel = null;
+         }
+
     if (this.cocoModel) {
       // COCO-SSD doesn't have a dispose method, but we can clear the reference
       this.cocoModel = null;
     }
-    this.isInitialized = false;
+    tf.disposeVariables();
   }
 }
 
