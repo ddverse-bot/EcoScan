@@ -1,3 +1,5 @@
+/* ---------- Scan Types ---------- */
+
 export type ScanCategory =
   | "Plastic"
   | "Paper"
@@ -11,12 +13,17 @@ export interface ScanResult {
   message: string;
 }
 
+/* ---------- Detection Logic ---------- */
+/**
+ * Lightweight image detection (Firebase-safe)
+ * Uses image mime type heuristics
+ */
 export function detectObjectFromImage(
   imageDataUrl: string
 ): ScanResult {
-  // Lightweight heuristic (Firebase-safe)
 
-  if (imageDataUrl.includes("png")) {
+  // Base64 MIME checks
+  if (imageDataUrl.startsWith("data:image/png")) {
     return {
       category: "Plastic",
       points: 10,
@@ -24,11 +31,19 @@ export function detectObjectFromImage(
     };
   }
 
-  if (imageDataUrl.includes("jpeg")) {
+  if (imageDataUrl.startsWith("data:image/jpeg")) {
     return {
       category: "Paper",
       points: 15,
       message: "Paper detected. Good recyclable choice 📄"
+    };
+  }
+
+  if (imageDataUrl.startsWith("data:image/webp")) {
+    return {
+      category: "Organic",
+      points: 20,
+      message: "Organic item detected. Compost if possible 🌱"
     };
   }
 
@@ -38,3 +53,5 @@ export function detectObjectFromImage(
     message: "Item not recognized. Try again."
   };
 }
+
+

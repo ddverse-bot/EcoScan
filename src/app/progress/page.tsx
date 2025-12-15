@@ -1,16 +1,30 @@
 "use client";
 
-export default function ProgressPage() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-green-50 px-6">
-      <h1 className="text-3xl font-bold text-green-700 mb-4">
-        Your Eco Progress
-      </h1>
+import { useState } from "react";
+import { getEcoPoints, resetEcoPoints } from "@/lib/ecoPoints";
 
-      <p className="text-gray-700 text-center max-w-md">
-        Start scanning items to earn eco points and level up.
-        Your progress will appear here once you begin using EcoScan.
-      </p>
+export default function ProgressPage() {
+  const [points, setPoints] = useState(getEcoPoints());
+
+  return (
+    <div className="p-6 max-w-md mx-auto text-center">
+      <h1 className="text-2xl font-bold mb-4">🌱 Eco Progress</h1>
+
+      <div className="text-5xl font-bold text-green-600 mb-4">
+        {points}
+      </div>
+
+      <p className="mb-6">Total Eco Points Earned</p>
+
+      <button
+        onClick={() => {
+          resetEcoPoints();
+          setPoints(0);
+        }}
+        className="px-4 py-2 bg-red-500 text-white rounded"
+      >
+        Reset Points
+      </button>
     </div>
   );
 }

@@ -1,108 +1,117 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { db } from "@/lib/firebase";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-
-type Result = "Plastic" | "Paper" | "Metal";
+import { detectObjectFromImage, ScanResult } from "@/lib/ai/objectDetection";
+import { addEcoPoints } from "@/lib/ecoPoints";
 
 export default function ScanPage() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [result, setResult] = useState<Result | null>(null);
-  const [points, setPoints] = useState(0);
-  const [progress, setProgress] = useState(0);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+    "environment"
+  );
+  const [scanResult, setScanResult] = useState<
+    (ScanResult & { totalPoints: number }) | null
+  >(null);
+  const [error, setError] = useState<string | null>(null);
 
+  /* ---------------- START CAMERA ---------------- */
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }
-    }).then(stream => {
-      if (videoRef.current) videoRef.current.srcObject = stream;
-    });
-  }, []);
+    let stream: MediaStream;
 
-  const analyzeBrightness = (): Result => {
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode },
+        });
 
-    let total = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      total += (data[i] + data[i + 1] + data[i + 2]) / 3;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        setError("Camera access denied");
+      }
     }
 
-    const avg = total / (data.length / 4);
+    startCamera();
 
-    if (avg > 180) return "Paper";
-    if (avg > 100) return "Plastic";
-    return "Metal";
-  };
+    return () => {
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [facingMode]);
 
-  const capture = async () => {
-    const video = videoRef.current!;
-    const canvas = canvasRef.current!;
+  /* ---------------- CAPTURE IMAGE ---------------- */
+  const captureImage = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    canvas.getContext("2d")?.drawImage(video, 0, 0);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    const detected = analyzeBrightness();
-    applyResult(detected);
-  };
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const applyResult = async (type: Result) => {
-    const earned =
-      type === "Plastic" ? 10 :
-      type === "Paper" ? 15 : 20;
+    const imageDataUrl = canvas.toDataURL("image/png");
 
-    setResult(type);
-    setPoints(p => p + earned);
-    setProgress(p => Math.min(100, p + earned));
+    const result = detectObjectFromImage(imageDataUrl);
+    const totalPoints = addEcoPoints(result.points);
 
-    await addDoc(collection(db, "scans"), {
-      result: type,
-      points: earned,
-      createdAt: serverTimestamp()
+    setScanResult({
+      ...result,
+      totalPoints,
     });
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>EcoScan</h2>
+    <div className="p-4 max-w-md mx-auto text-center">
+      <h1 className="text-2xl font-bold mb-4">📸 Scan Item</h1>
 
-      <video ref={videoRef} autoPlay playsInline width="100%" />
+      {error && <p className="text-red-500 mb-2">{error}</p>}
 
-      <canvas ref={canvasRef} hidden />
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        className="rounded-lg w-full mb-3"
+      />
 
-      <button onClick={capture}>Scan</button>
+      <canvas ref={canvasRef} className="hidden" />
 
-      <div style={{ marginTop: 10 }}>
-        <button onClick={() => applyResult("Plastic")}>Plastic</button>
-        <button onClick={() => applyResult("Paper")}>Paper</button>
-        <button onClick={() => applyResult("Metal")}>Metal</button>
+      <div className="flex justify-between gap-2">
+        <button
+          onClick={captureImage}
+          className="flex-1 bg-green-600 text-white py-2 rounded"
+        >
+          Scan
+        </button>
+
+        <button
+          onClick={() =>
+            setFacingMode((prev) =>
+              prev === "environment" ? "user" : "environment"
+            )
+          }
+          className="flex-1 bg-gray-600 text-white py-2 rounded"
+        >
+          Flip Camera
+        </button>
       </div>
 
-      {result && (
-        <>
-          <p>Detected: <b>{result}</b></p>
-          <p>Points: <b>{points}</b></p>
-
-          <div style={{
-            height: 20,
-            background: "#ddd",
-            borderRadius: 10
-          }}>
-            <div style={{
-              width: `${progress}%`,
-              height: "100%",
-              background: "green",
-              borderRadius: 10
-            }} />
-          </div>
-        </>
+      {scanResult && (
+        <div className="mt-4 p-4 rounded bg-green-100">
+          <p className="text-lg font-bold">
+            Category: {scanResult.category}
+          </p>
+          <p className="mt-1">➕ Points Earned: {scanResult.points}</p>
+          <p className="mt-1">⭐ Total Eco Points: {scanResult.totalPoints}</p>
+          <p className="mt-2">{scanResult.message}</p>
+        </div>
       )}
     </div>
   );
 }
-

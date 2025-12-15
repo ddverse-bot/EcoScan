@@ -1,10 +1,9 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  output: "export",
-  images: {
-    unoptimized: true
-  }
+const nextConfig = {
+  webpack: (config) => {
+    config.resolve.alias['@tensorflow/tfjs'] =
+      require.resolve('@tensorflow/tfjs/dist/tf.min.js');
+    return config;
+  },
 };
 
 export default nextConfig;
