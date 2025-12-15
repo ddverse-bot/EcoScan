@@ -2,114 +2,121 @@
 
 import { useEffect, useRef, useState } from "react";
 import { detectObjectFromImage, ScanResult } from "@/lib/ai/objectDetection";
-import { addEcoPoints } from "@/lib/ecoPoints";
 
 export default function ScanPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<"user" | "environment">(
     "environment"
   );
-  const [scanResult, setScanResult] = useState<
-    (ScanResult & { totalPoints: number }) | null
-  >(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /* ---------------- START CAMERA ---------------- */
   useEffect(() => {
-    let stream: MediaStream;
-
     async function startCamera() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+
+        const newStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode },
+          audio: false
         });
 
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+          videoRef.current.srcObject = newStream;
         }
-      } catch (err) {
-        setError("Camera access denied");
+
+        setStream(newStream);
+      } catch {
+        setError("Camera access denied or not available");
       }
     }
 
     startCamera();
 
     return () => {
-      stream?.getTracks().forEach((track) => track.stop());
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
     };
   }, [facingMode]);
 
+  /* ---------------- SAVE SCAN ---------------- */
+  function saveScan(scan: ScanResult) {
+    const existing = JSON.parse(localStorage.getItem("eco_scans") || "[]");
+
+    existing.push({
+      category: scan.category,
+      points: scan.points,
+      date: new Date().toISOString()
+    });
+
+    localStorage.setItem("eco_scans", JSON.stringify(existing));
+  }
+
   /* ---------------- CAPTURE IMAGE ---------------- */
-  const captureImage = () => {
+  function captureImage() {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) return;
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const imageDataUrl = canvas.toDataURL("image/png");
 
-    const result = detectObjectFromImage(imageDataUrl);
-    const totalPoints = addEcoPoints(result.points);
-
-    setScanResult({
-      ...result,
-      totalPoints,
-    });
-  };
+    const scanResult = detectObjectFromImage(imageDataUrl);
+    setResult(scanResult);
+    saveScan(scanResult);
+  }
 
   return (
-    <div className="p-4 max-w-md mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-4">📸 Scan Item</h1>
+    <div style={{ padding: 16 }}>
+      <h1>📷 Scan Item</h1>
 
-      {error && <p className="text-red-500 mb-2">{error}</p>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        className="rounded-lg w-full mb-3"
+        muted
+        style={{ width: "100%", maxWidth: 400, borderRadius: 12 }}
       />
 
-      <canvas ref={canvasRef} className="hidden" />
+      <canvas ref={canvasRef} style={{ display: "none" }} />
 
-      <div className="flex justify-between gap-2">
-        <button
-          onClick={captureImage}
-          className="flex-1 bg-green-600 text-white py-2 rounded"
-        >
-          Scan
-        </button>
-
+      <div style={{ marginTop: 12 }}>
+        <button onClick={captureImage}>📸 Capture</button>
         <button
           onClick={() =>
-            setFacingMode((prev) =>
+            setFacingMode(prev =>
               prev === "environment" ? "user" : "environment"
             )
           }
-          className="flex-1 bg-gray-600 text-white py-2 rounded"
+          style={{ marginLeft: 10 }}
         >
-          Flip Camera
+          🔄 Flip Camera
         </button>
       </div>
 
-      {scanResult && (
-        <div className="mt-4 p-4 rounded bg-green-100">
-          <p className="text-lg font-bold">
-            Category: {scanResult.category}
-          </p>
-          <p className="mt-1">➕ Points Earned: {scanResult.points}</p>
-          <p className="mt-1">⭐ Total Eco Points: {scanResult.totalPoints}</p>
-          <p className="mt-2">{scanResult.message}</p>
+      {result && (
+        <div style={{ marginTop: 16 }}>
+          <h2>✅ Scan Result</h2>
+          <p><strong>Category:</strong> {result.category}</p>
+          <p><strong>Points:</strong> {result.points}</p>
+          <p>{result.message}</p>
         </div>
       )}
     </div>

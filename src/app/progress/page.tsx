@@ -1,30 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import { getEcoPoints, resetEcoPoints } from "@/lib/ecoPoints";
+import { useEffect, useState } from "react";
+
+interface ScanHistory {
+  category: string;
+  points: number;
+  date: string;
+}
 
 export default function ProgressPage() {
-  const [points, setPoints] = useState(getEcoPoints());
+  const [scans, setScans] = useState<ScanHistory[]>([]);
+  const [totalPoints, setTotalPoints] = useState(0);
+
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem("eco_scans") || "[]");
+    setScans(saved);
+
+    const total = saved.reduce(
+      (sum: number, scan: ScanHistory) => sum + scan.points,
+      0
+    );
+    setTotalPoints(total);
+  }, []);
 
   return (
-    <div className="p-6 max-w-md mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-4">🌱 Eco Progress</h1>
+    <div style={{ padding: 16 }}>
+      <h1>🌱 Eco Progress</h1>
 
-      <div className="text-5xl font-bold text-green-600 mb-4">
-        {points}
-      </div>
+      <h2>Total Points</h2>
+      <p style={{ fontSize: 24, fontWeight: "bold" }}>
+        {totalPoints} pts
+      </p>
 
-      <p className="mb-6">Total Eco Points Earned</p>
+      <h2>Scan History</h2>
 
-      <button
-        onClick={() => {
-          resetEcoPoints();
-          setPoints(0);
-        }}
-        className="px-4 py-2 bg-red-500 text-white rounded"
-      >
-        Reset Points
-      </button>
+      {scans.length === 0 && <p>No scans yet. Start scanning!</p>}
+
+      <ul>
+        {scans.map((scan, index) => (
+          <li key={index} style={{ marginBottom: 8 }}>
+            <strong>{scan.category}</strong> — {scan.points} pts  
+            <br />
+            <small>{new Date(scan.date).toLocaleString()}</small>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
