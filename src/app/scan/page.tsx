@@ -1,144 +1,108 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-backend-webgl";
-import * as cocoSsd from "@tensorflow-models/coco-ssd";
-import type { DetectedObject } from "@tensorflow-models/coco-ssd";
+import { db } from "@/lib/firebase";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+
+type Result = "Plastic" | "Paper" | "Metal";
 
 export default function ScanPage() {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [model, setModel] = useState<cocoSsd.ObjectDetection | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
+  const [points, setPoints] = useState(0);
+  const [progress, setProgress] = useState(0);
 
-  // Load TensorFlow + model
   useEffect(() => {
-    const loadModel = async () => {
-      try {
-        await tf.setBackend("webgl");
-        await tf.ready();
-        const loadedModel = await cocoSsd.load();
-        setModel(loadedModel);
-        setLoading(false);
-      } catch {
-        setError("Failed to load AI model");
-        setLoading(false);
-      }
-    };
-
-    loadModel();
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    }).then(stream => {
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    });
   }, []);
 
-  // Start camera
-  useEffect(() => {
-    const startCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false
-        });
+  const analyzeBrightness = (): Result => {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-      } catch {
-        setError("Camera access denied or unavailable");
-      }
-    };
+    let total = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      total += (data[i] + data[i + 1] + data[i + 2]) / 3;
+    }
 
-    startCamera();
-  }, []);
+    const avg = total / (data.length / 4);
 
-  // Detection loop
-  useEffect(() => {
-    let animationId: number;
+    if (avg > 180) return "Paper";
+    if (avg > 100) return "Plastic";
+    return "Metal";
+  };
 
-    const detectFrame = async () => {
-      if (
-        model &&
-        videoRef.current &&
-        canvasRef.current &&
-        videoRef.current.readyState === 4
-      ) {
-        const predictions: DetectedObject[] =
-          await model.detect(videoRef.current);
+  const capture = async () => {
+    const video = videoRef.current!;
+    const canvas = canvasRef.current!;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-        const ctx = canvasRef.current.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(
-            0,
-            0,
-            canvasRef.current.width,
-            canvasRef.current.height
-          );
+    canvas.getContext("2d")?.drawImage(video, 0, 0);
 
-          predictions.forEach((prediction: DetectedObject) => {
-            const [x, y, width, height] = prediction.bbox;
+    const detected = analyzeBrightness();
+    applyResult(detected);
+  };
 
-            ctx.strokeStyle = "#00FF00";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, width, height);
+  const applyResult = async (type: Result) => {
+    const earned =
+      type === "Plastic" ? 10 :
+      type === "Paper" ? 15 : 20;
 
-            ctx.fillStyle = "#00FF00";
-            ctx.font = "16px Arial";
-            ctx.fillText(
-              `${prediction.class} (${Math.round(
-                prediction.score * 100
-              )}%)`,
-              x,
-              y > 10 ? y - 5 : 10
-            );
-          });
-        }
-      }
+    setResult(type);
+    setPoints(p => p + earned);
+    setProgress(p => Math.min(100, p + earned));
 
-      animationId = requestAnimationFrame(detectFrame);
-    };
-
-    detectFrame();
-
-    return () => cancelAnimationFrame(animationId);
-  }, [model]);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center text-lg">
-        Loading AI model...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-screen items-center justify-center text-red-600">
-        {error}
-      </div>
-    );
-  }
+    await addDoc(collection(db, "scans"), {
+      result: type,
+      points: earned,
+      createdAt: serverTimestamp()
+    });
+  };
 
   return (
-    <div className="relative h-screen w-screen bg-black overflow-hidden">
-      <video
-        ref={videoRef}
-        className="absolute top-0 left-0 h-full w-full object-cover"
-        muted
-        playsInline
-      />
+    <div style={{ padding: 20 }}>
+      <h2>EcoScan</h2>
 
-      <canvas
-        ref={canvasRef}
-        width={640}
-        height={480}
-        className="absolute top-0 left-0 h-full w-full"
-      />
+      <video ref={videoRef} autoPlay playsInline width="100%" />
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded bg-black/70 px-4 py-2 text-white text-sm">
-        EcoScan — AI Object Detection
+      <canvas ref={canvasRef} hidden />
+
+      <button onClick={capture}>Scan</button>
+
+      <div style={{ marginTop: 10 }}>
+        <button onClick={() => applyResult("Plastic")}>Plastic</button>
+        <button onClick={() => applyResult("Paper")}>Paper</button>
+        <button onClick={() => applyResult("Metal")}>Metal</button>
       </div>
+
+      {result && (
+        <>
+          <p>Detected: <b>{result}</b></p>
+          <p>Points: <b>{points}</b></p>
+
+          <div style={{
+            height: 20,
+            background: "#ddd",
+            borderRadius: 10
+          }}>
+            <div style={{
+              width: `${progress}%`,
+              height: "100%",
+              background: "green",
+              borderRadius: 10
+            }} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
