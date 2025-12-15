@@ -1,9 +1,8 @@
-const nextConfig = {
-  webpack: (config) => {
-    config.resolve.alias['@tensorflow/tfjs'] =
-      require.resolve('@tensorflow/tfjs/dist/tf.min.js');
-    return config;
-  },
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true
 };
 
 export default nextConfig;
+
